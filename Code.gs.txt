@@ -1,0 +1,177 @@
+/**
+ * わが家の家計簿 ─ 同期用プログラム（Google Apps Script）
+ *
+ * このスプレッドシートに家計簿の記録を保存し、スマホとパソコンのアプリから同期します。
+ * 使い方はアプリの「設定」画面に書いてあります。
+ *   1) このコードを貼り付けて保存
+ *   2) 上の関数の選択で「setup」を選んで「実行」（初回は許可を求められます）
+ *   3) 「デプロイ」→「新しいデプロイ」→ 種類「ウェブアプリ」
+ *      実行ユーザー：自分 ／ アクセスできるユーザー：全員 → デプロイ
+ *   4) 表示されたウェブアプリのURLと、シート「接続情報」の接続キーをアプリに入力
+ *
+ * 記録はシート「記録」に1行1件で入ります。シートを手で直した場合も、次の同期でアプリに反映されます。
+ */
+
+const SHEET_RECORDS = '記録';
+const SHEET_INFO = '接続情報';
+const FIELDS = ['id', 'kind', 'type', 'date', 'amount', 'cat', 'memo', 'group', 'name', 'cycle', 'day', 'month', 'note', 'active', 'sample', 'created', 'updatedAt', 'deleted', 'syncedAt'];
+const HEADERS = ['ID', '種類', '収支', '日付', '金額', 'カテゴリ', '摘要', '区分', '名前', 'サイクル', '日', '月', 'メモ', '有効', 'サンプル', '作成', '更新', '削除', '同期'];
+const NUM = { amount: 1, day: 1, month: 1, created: 1, updatedAt: 1, syncedAt: 1 };
+const BOOL = { active: 1, sample: 1, deleted: 1 };
+const TEXT_COLS = ['id', 'date', 'memo', 'name', 'note', 'cat'];
+const COL = {}; FIELDS.forEach((f, i) => COL[f] = i);
+
+/** 最初に1回だけ実行：シートと接続キーを用意する */
+function setup() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(SHEET_RECORDS);
+  if (!sh) sh = ss.insertSheet(SHEET_RECORDS);
+  sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]).setFontWeight('bold');
+  sh.setFrozenRows(1);
+  TEXT_COLS.forEach(f => sh.getRange(1, COL[f] + 1, sh.getMaxRows(), 1).setNumberFormat('@'));
+  const props = PropertiesService.getScriptProperties();
+  let key = props.getProperty('KEY');
+  if (!key) { key = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '').slice(0, 40); props.setProperty('KEY', key); }
+  let info = ss.getSheetByName(SHEET_INFO);
+  if (!info) info = ss.insertSheet(SHEET_INFO);
+  info.clear();
+  info.getRange(1, 1, 4, 2).setValues([
+    ['接続キー', key],
+    ['使い方', 'このキーをアプリの「設定」→「接続キー」に貼り付けます。他の人に教えないでください。'],
+    ['ウェブアプリのURL', '「デプロイ」→「デプロイを管理」で表示される「ウェブアプリ」のURLをアプリに貼り付けます。'],
+    ['キーを変えたいとき', 'Apps Scriptで関数「resetKey」を実行すると新しいキーになります（アプリ側も入れ直してください）。']
+  ]);
+  info.getRange('A1:A4').setFontWeight('bold');
+  info.setColumnWidth(1, 160); info.setColumnWidth(2, 520);
+  Logger.log('準備ができました。接続キー: ' + key);
+  return key;
+}
+
+/** 接続キーを作り直す */
+function resetKey() {
+  PropertiesService.getScriptProperties().deleteProperty('KEY');
+  return setup();
+}
+
+/** 動作確認用（ブラウザでURLを開くと表示される） */
+function doGet() {
+  return json({ ok: true, app: 'kakeibo', message: '家計簿の同期サーバーは動いています。アプリの設定にこのURLを入れてください。' });
+}
+
+/** アプリからの同期 */
+function doPost(e) {
+  let req;
+  try { req = JSON.parse(e.postData.contents); } catch (err) { return json({ ok: false, error: 'bad_request' }); }
+  const key = PropertiesService.getScriptProperties().getProperty('KEY');
+  if (!key) return json({ ok: false, error: 'not_setup' });
+  if (!req || req.key !== key) return json({ ok: false, error: 'bad_key' });
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return json({ ok: false, error: 'busy' });
+  try {
+    return json(sync(req));
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function sync(req) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(SHEET_RECORDS);
+  if (!sh) return { ok: false, error: 'not_setup' };
+  const now = Date.now();
+  const lastRow = sh.getLastRow();
+  const width = FIELDS.length;
+  const values = lastRow > 1 ? sh.getRange(2, 1, lastRow - 1, width).getValues() : [];
+  const rowOf = {};
+  values.forEach((r, i) => { if (r[COL.id] !== '' && r[COL.id] != null) rowOf[String(r[COL.id])] = i; });
+
+  const changes = Array.isArray(req.changes) ? req.changes.slice(0, 2000) : [];
+  const accepted = [], rejected = [];
+  let dirty = false;
+  changes.forEach(c => {
+    if (!c || typeof c !== 'object' || !c.id) return;
+    const id = String(c.id).slice(0, 80);
+    const i = rowOf[id];
+    if (i != null) {
+      const cur = fromRow(values[i]);
+      if (Number(cur.updatedAt || 0) > Number(c.updatedAt || 0)) { rejected.push(id); return; } // シートの方が新しい
+      values[i] = toRow(c, id, now);
+    } else {
+      rowOf[id] = values.length;
+      values.push(toRow(c, id, now));
+    }
+    accepted.push(id);
+    dirty = true;
+  });
+  if (dirty && values.length) {
+    TEXT_COLS.forEach(f => sh.getRange(2, COL[f] + 1, values.length, 1).setNumberFormat('@'));
+    sh.getRange(2, 1, values.length, width).setValues(values);
+  }
+
+  const since = Number(req.since || 0);
+  const acceptedSet = {}; accepted.forEach(id => acceptedSet[id] = 1);
+  const rejectedSet = {}; rejected.forEach(id => rejectedSet[id] = 1);
+  const rows = [];
+  values.forEach(r => {
+    if (r[COL.id] === '' || r[COL.id] == null) return;
+    const o = fromRow(r);
+    if (acceptedSet[o.id]) return;
+    if (Number(o.syncedAt || 0) > since || rejectedSet[o.id]) rows.push(o);
+  });
+  return { ok: true, now: now, accepted: accepted, rejected: rejected, rows: rows };
+}
+
+function toRow(c, id, now) {
+  return FIELDS.map(f => {
+    if (f === 'id') return id;
+    if (f === 'syncedAt') return now;
+    const v = c[f];
+    if (v == null || v === '') return '';
+    if (NUM[f]) { const n = Number(v); return isFinite(n) ? n : ''; }
+    if (BOOL[f]) return v === true || v === 'TRUE' || v === 'true';
+    return String(v).slice(0, 500);
+  });
+}
+
+function fromRow(r) {
+  const o = {};
+  FIELDS.forEach((f, i) => {
+    let v = r[i];
+    if (v === '' || v == null) return;
+    if (f === 'date' && Object.prototype.toString.call(v) === '[object Date]') {
+      v = Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    } else if (NUM[f]) {
+      v = Number(v); if (!isFinite(v)) return;
+    } else if (BOOL[f]) {
+      v = v === true || v === 'TRUE' || v === 'true';
+    } else {
+      v = String(v);
+    }
+    o[f] = v;
+  });
+  if (o.id != null) o.id = String(o.id);
+  return o;
+}
+
+/** シートを手で編集したら「更新」「同期」を今の時刻にして、アプリに反映させる */
+function onEdit(e) {
+  try {
+    const sh = e.range.getSheet();
+    if (sh.getName() !== SHEET_RECORDS) return;
+    const r0 = e.range.getRow(), n = e.range.getNumRows();
+    const c0 = e.range.getColumn(), c1 = c0 + e.range.getNumColumns() - 1;
+    const upd = COL.updatedAt + 1, syn = COL.syncedAt + 1;
+    if (c0 >= upd && c1 <= syn) return;
+    const start = Math.max(2, r0), end = r0 + n - 1;
+    if (end < start) return;
+    const now = Date.now();
+    const ids = sh.getRange(start, COL.id + 1, end - start + 1, 1).getValues();
+    const stamp = ids.map(r => (r[0] === '' ? ['', ''] : [now, now]));
+    sh.getRange(start, upd, end - start + 1, 1).setValues(stamp.map(s => [s[0]]));
+    sh.getRange(start, syn, end - start + 1, 1).setValues(stamp.map(s => [s[1]]));
+  } catch (err) { /* 失敗しても編集は残る */ }
+}
+
+function json(o) {
+  return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
+}
