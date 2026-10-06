@@ -1,6 +1,6 @@
 /* わが家の家計簿 ─ オフライン対応と「共有」からの写真受け取り */
-const VERSION = "kk-1.0.0";
-const SHELL = ["./", "index.html", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "Code.gs.txt"];
+const VERSION = "kk-1.0.1";
+const SHELL = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "maskable-512.png", "Code.gs.txt"];
 const OCR_CACHE = "kk-ocr-1"; // 文字認識の部品（大きいので版が変わらない限り使い回す）
 const FONT_CACHE = "kk-fonts";
 const SHARE_CACHE = "kk-share";
@@ -49,7 +49,7 @@ self.addEventListener("fetch", e => {
   if (url.origin !== location.origin) return; // 同期（script.google.com）などは素通し
 
   // 文字認識の部品：一度読み込んだら端末に保存
-  if (url.pathname.includes("/ocr/")) {
+  if (/\/(tesseract[^/]*|worker\.min|jpn-data|wasm-check)\.js$/.test(url.pathname)) {
     e.respondWith(cacheFirst(req, OCR_CACHE));
     return;
   }

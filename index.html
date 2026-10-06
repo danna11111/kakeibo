@@ -7,8 +7,8 @@
 <meta name="theme-color" content="#121a1c" media="(prefers-color-scheme: dark)">
 <meta name="description" content="自分専用の家計簿">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icons/icon-192.png" type="image/png">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>わが家の家計簿</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1042,7 +1042,7 @@ function renderSubGroup(box,list){
 // 流れ：写真 → (AIが画像を読めるなら AI) / (読めないなら この端末でOCR → 文字をAIで整理 → AIも無理なら自前の抽出)
 let sampleFn=null,rcLimits=null,rcImagesOK=false,rcBusy=false,rcCancel=null,rcUrl=null,rcCanceled=false;
 let OCR_BASE="";
-try{OCR_BASE=new URL("ocr/",location.href).href}catch(e){}
+try{OCR_BASE=new URL("./",location.href).href}catch(e){}
 const RC=self.ReceiptCore;
 
 async function setupReceipt(){
