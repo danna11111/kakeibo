@@ -3,6 +3,10 @@
  *
  * このスプレッドシートに家計簿の記録を保存し、スマホとパソコンのアプリから同期します。
  * 使い方はアプリの「設定」画面に書いてあります。
+ * すでに使っている場合の更新：コードを貼り替えて保存 →「デプロイ」→「デプロイを管理」→ 鉛筆 →
+ *   バージョン「新バージョン」→ デプロイ（URLと接続キーは変わりません。setupの再実行も不要です）
+ *
+ * はじめて使う場合：
  *   1) このコードを貼り付けて保存
  *   2) 上の関数の選択で「setup」を選んで「実行」（初回は許可を求められます）
  *   3) 「デプロイ」→「新しいデプロイ」→ 種類「ウェブアプリ」
@@ -14,11 +18,15 @@
 
 const SHEET_RECORDS = '記録';
 const SHEET_INFO = '接続情報';
-const FIELDS = ['id', 'kind', 'type', 'date', 'amount', 'cat', 'memo', 'group', 'name', 'cycle', 'day', 'month', 'note', 'active', 'sample', 'created', 'updatedAt', 'deleted', 'syncedAt'];
-const HEADERS = ['ID', '種類', '収支', '日付', '金額', 'カテゴリ', '摘要', '区分', '名前', 'サイクル', '日', '月', 'メモ', '有効', 'サンプル', '作成', '更新', '削除', '同期'];
+const SERVER_VERSION = 2; // 2: 自動記帳の開始月・終了月・金額の履歴に対応
+// 新しい項目は必ず末尾に足す（途中に入れると、すでにある行の列がずれる）
+const FIELDS = ['id', 'kind', 'type', 'date', 'amount', 'cat', 'memo', 'group', 'name', 'cycle', 'day', 'month', 'note', 'active', 'sample', 'created', 'updatedAt', 'deleted', 'syncedAt', 'start', 'end', 'hist'];
+const HEADERS = ['ID', '種類', '収支', '日付', '金額', 'カテゴリ', '摘要', '区分', '名前', 'サイクル', '日', '月', 'メモ', '有効', 'サンプル', '作成', '更新', '削除', '同期', '開始月', '終了月', '金額の履歴'];
 const NUM = { amount: 1, day: 1, month: 1, created: 1, updatedAt: 1, syncedAt: 1 };
 const BOOL = { active: 1, sample: 1, deleted: 1 };
-const TEXT_COLS = ['id', 'date', 'memo', 'name', 'note', 'cat'];
+const TEXT_COLS = ['id', 'date', 'memo', 'name', 'note', 'cat', 'start', 'end', 'hist'];
+const JSONF = { hist: 1 };
+const YM = { start: 1, end: 1 };
 const COL = {}; FIELDS.forEach((f, i) => COL[f] = i);
 
 /** 最初に1回だけ実行：シートと接続キーを用意する */
@@ -26,9 +34,8 @@ function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sh = ss.getSheetByName(SHEET_RECORDS);
   if (!sh) sh = ss.insertSheet(SHEET_RECORDS);
-  sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]).setFontWeight('bold');
+  ensureColumns(sh);
   sh.setFrozenRows(1);
-  TEXT_COLS.forEach(f => sh.getRange(1, COL[f] + 1, sh.getMaxRows(), 1).setNumberFormat('@'));
   const props = PropertiesService.getScriptProperties();
   let key = props.getProperty('KEY');
   if (!key) { key = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '').slice(0, 40); props.setProperty('KEY', key); }
@@ -47,6 +54,17 @@ function setup() {
   return key;
 }
 
+/** 見出しと列の書式をそろえる（項目が増えた版に更新したときも自動で足す） */
+function ensureColumns(sh) {
+  const width = FIELDS.length;
+  if (sh.getMaxColumns() < width) sh.insertColumnsAfter(sh.getMaxColumns(), width - sh.getMaxColumns());
+  const head = sh.getRange(1, 1, 1, width).getValues()[0];
+  if (HEADERS.some((h, i) => head[i] !== h)) {
+    sh.getRange(1, 1, 1, width).setValues([HEADERS]).setFontWeight('bold');
+    TEXT_COLS.forEach(f => sh.getRange(1, COL[f] + 1, sh.getMaxRows(), 1).setNumberFormat('@'));
+  }
+}
+
 /** 接続キーを作り直す */
 function resetKey() {
   PropertiesService.getScriptProperties().deleteProperty('KEY');
@@ -55,7 +73,7 @@ function resetKey() {
 
 /** 動作確認用（ブラウザでURLを開くと表示される） */
 function doGet() {
-  return json({ ok: true, app: 'kakeibo', message: '家計簿の同期サーバーは動いています。アプリの設定にこのURLを入れてください。' });
+  return json({ ok: true, app: 'kakeibo', v: SERVER_VERSION, message: '家計簿の同期サーバーは動いています。アプリの設定にこのURLを入れてください。' });
 }
 
 /** アプリからの同期 */
@@ -78,6 +96,7 @@ function sync(req) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(SHEET_RECORDS);
   if (!sh) return { ok: false, error: 'not_setup' };
+  ensureColumns(sh);
   const now = Date.now();
   const lastRow = sh.getLastRow();
   const width = FIELDS.length;
@@ -118,7 +137,7 @@ function sync(req) {
     if (acceptedSet[o.id]) return;
     if (Number(o.syncedAt || 0) > since || rejectedSet[o.id]) rows.push(o);
   });
-  return { ok: true, now: now, accepted: accepted, rejected: rejected, rows: rows };
+  return { ok: true, v: SERVER_VERSION, now: now, accepted: accepted, rejected: rejected, rows: rows };
 }
 
 function toRow(c, id, now) {
@@ -129,6 +148,7 @@ function toRow(c, id, now) {
     if (v == null || v === '') return '';
     if (NUM[f]) { const n = Number(v); return isFinite(n) ? n : ''; }
     if (BOOL[f]) return v === true || v === 'TRUE' || v === 'true';
+    if (JSONF[f]) { try { const t = JSON.stringify(v); return t && t.length <= 4000 ? t : ''; } catch (err) { return ''; } }
     return String(v).slice(0, 500);
   });
 }
@@ -140,6 +160,10 @@ function fromRow(r) {
     if (v === '' || v == null) return;
     if (f === 'date' && Object.prototype.toString.call(v) === '[object Date]') {
       v = Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    } else if (YM[f]) {
+      v = Object.prototype.toString.call(v) === '[object Date]' ? Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM') : String(v).slice(0, 7);
+    } else if (JSONF[f]) {
+      try { v = JSON.parse(String(v)); } catch (err) { return; }
     } else if (NUM[f]) {
       v = Number(v); if (!isFinite(v)) return;
     } else if (BOOL[f]) {

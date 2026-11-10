@@ -186,6 +186,17 @@ body.noscroll{overflow:hidden}
 .err{color:var(--out)}
 .filebtn{display:inline-flex;align-items:center;font-size:inherit;color:inherit;position:relative}
 .btn:disabled{opacity:.5;cursor:default}
+.alert{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px;padding:12px 14px;border-radius:10px;font-size:.9rem;line-height:1.6}
+.alert>span{flex:1 1 240px;min-width:0}
+.alert.warn{background:var(--out);color:var(--paper)}
+.alert.warn .btn{background:var(--paper);color:var(--out);border-color:var(--paper);font-weight:500}
+.alert.info{background:var(--warn-soft);color:var(--ink);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent)}
+.summary .plan{color:var(--ink);font-family:var(--mono);font-variant-numeric:tabular-nums}
+tr.plan td{color:var(--muted)}
+tr.plan td.neg,tr.plan td.pos{opacity:.6}
+tr.plan .tag{border-style:dashed}
+.tag{white-space:nowrap;display:inline-block}
+.amtfrom{background:var(--accent-soft);border-radius:8px;padding:8px 10px}
 </style>
 
 </head>
@@ -207,10 +218,19 @@ body.noscroll{overflow:hidden}
     </div>
   </header>
 
+  <div class="alert warn" id="syncAlert" role="status" hidden>
+    <span id="syncAlertText"></span>
+    <button class="btn" type="button" id="syncAlertBtn">原因を確認</button>
+  </div>
+  <div class="alert info" id="updAlert" hidden>
+    <span>開始月・終了月・金額の履歴をスマホとパソコンで同じにするには、スプレッドシート側の同期用プログラムの更新が必要です。更新するまでは、これらの設定は端末ごとに保存されます。</span>
+    <button class="btn" type="button" id="updAlertBtn">更新の手順</button>
+  </div>
+
   <section class="summary" aria-label="今月のまとめ">
-    <div><div class="k">収入</div><div class="v pos" id="sIn">¥0</div><div class="sub" id="sInSub">&nbsp;</div></div>
-    <div><div class="k">支出</div><div class="v neg" id="sOut">¥0</div><div class="sub" id="sOutSub">&nbsp;</div></div>
-    <div><div class="k">収支</div><div class="v" id="sBal">¥0</div><div class="sub" id="sBalSub">&nbsp;</div></div>
+    <div><div class="k" id="kIn">収入</div><div class="v pos" id="sIn">¥0</div><div class="sub plan" id="sInPlan" hidden></div><div class="sub" id="sInSub">&nbsp;</div></div>
+    <div><div class="k" id="kOut">支出</div><div class="v neg" id="sOut">¥0</div><div class="sub plan" id="sOutPlan" hidden></div><div class="sub" id="sOutSub">&nbsp;</div></div>
+    <div><div class="k" id="kBal">収支</div><div class="v" id="sBal">¥0</div><div class="sub plan" id="sBalPlan" hidden></div><div class="sub" id="sBalSub">&nbsp;</div></div>
     <div><div class="k">サブスク（月あたり）</div><div class="v" id="sSubs">¥0</div><div class="sub" id="sSubsSub">&nbsp;</div></div>
   </section>
 
@@ -283,7 +303,7 @@ body.noscroll{overflow:hidden}
         <div class="subs-list" id="subsList"></div>
         <details id="subDetails">
           <summary>＋ 収入・固定費・サブスクを追加</summary>
-          <form id="subForm" autocomplete="off">
+          <form id="subForm" autocomplete="off" novalidate>
             <div class="row">
               <div class="seg" role="group" aria-label="区分">
                 <button type="button" id="grpIncome" aria-pressed="false">収入</button>
@@ -305,6 +325,7 @@ body.noscroll{overflow:hidden}
               <label><span id="subDayLbl">引き落とし日</span><select id="subDay"></select></label>
               <label><span id="subCatLbl">種類</span><select id="subCat"></select></label>
             </div>
+            <label>開始月（この月から計上）<input type="month" id="subStart" placeholder="2026-11" pattern="\d{4}-(0[1-9]|1[0-2])"></label>
             <label>メモ（任意）<input type="text" id="subNote" maxlength="80" placeholder="例：家族で共有、年末に解約を検討"></label>
             <div class="formerr" id="subErr"></div>
             <button class="btn primary" type="submit">追加する</button>
@@ -313,7 +334,7 @@ body.noscroll{overflow:hidden}
       </section>
 
       <section class="panel">
-        <div class="panel-head"><h2>今月の内訳</h2><span class="small muted">支出のみ</span></div>
+        <div class="panel-head"><h2>内訳</h2><span class="small muted" id="barsNote">支出のみ</span></div>
         <div class="bars" id="bars"></div>
       </section>
 
@@ -369,6 +390,20 @@ body.noscroll{overflow:hidden}
           <li>もう1台（スマホ／パソコン）でも、同じURLとキーを入れれば同期が始まります。</li>
         </ol>
         <p class="small muted">「アクセスできるユーザー：全員」にしても、接続キーを知らない人は記録を読み書きできません。キーは他の人に教えないでください。</p>
+      </details>
+      <details class="steps" id="updSteps">
+        <summary>同期用プログラムを更新する（すでにつないでいる場合・約3分）</summary>
+        <ol>
+          <li>家計簿のスプレッドシートを開き、<b>「拡張機能」→「Apps Script」</b>を開きます。</li>
+          <li>今のコードを全部消し（Ctrl+A → Delete）、下のボタンでコピーした<b>新しい同期用プログラム</b>を貼り付けて、保存します。
+            <div class="row-btns"><button class="btn" type="button" id="copyCode2">新しい同期用プログラムをコピー</button></div>
+          </li>
+          <li>右上の<b>「デプロイ」→「デプロイを管理」</b>を開き、鉛筆のアイコンを押します。</li>
+          <li>「バージョン」を<b>「新バージョン」</b>にして<b>「デプロイ」</b>を押します。URLと接続キーは変わりません。</li>
+          <li>このアプリに戻って「今すぐ同期」を押します。上のお知らせが消えれば完了です。もう1台は何もしなくて大丈夫です。</li>
+        </ol>
+        <p class="small muted">「新しいデプロイ」ではなく「デプロイを管理」から更新してください。新しいデプロイを作るとURLが変わり、アプリ側の入れ直しが必要になります。</p>
+        <div class="small" id="updState"></div>
       </details>
     </div>
 
@@ -604,6 +639,87 @@ body.noscroll{overflow:hidden}
 
 </script>
 <script>
+/* 自動記帳（収入・固定費・サブスク）の「いつから・いつまで・いくら」を決める共通処理 */
+(function (root) {
+  "use strict";
+  const pad2 = n => String(n).padStart(2, "0");
+  const YM_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+  function ym(y, m) { return y + "-" + pad2(m); }
+  function ymOfTs(ts) {
+    const n = Number(ts); if (!n || !isFinite(n)) return null;
+    const d = new Date(n); return ym(d.getFullYear(), d.getMonth() + 1);
+  }
+  function ymOfDate(d) { return ym(d.getFullYear(), d.getMonth() + 1); }
+  function addMonths(s, k) {
+    let y = Number(s.slice(0, 4)), m = Number(s.slice(5, 7)) - 1 + k;
+    y += Math.floor(m / 12); m = ((m % 12) + 12) % 12;
+    return ym(y, m + 1);
+  }
+  function ymLabel(s) { return Number(s.slice(0, 4)) + "年" + Number(s.slice(5, 7)) + "月"; }
+  const valid = s => typeof s === "string" && YM_RE.test(s);
+
+  // いつから：指定がなければ登録した月
+  function startOf(s) { return valid(s.start) ? s.start : (ymOfTs(s.created) || "2000-01"); }
+  // いつまで（その月を含む）。続いていれば null
+  function endOf(s) {
+    if (valid(s.end)) return s.end;
+    if (s.active === false) { // 以前の版で「停止」したもの：止めた月の前月まで
+      const u = ymOfTs(s.updatedAt) || ymOfTs(Date.now());
+      return addMonths(u, -1);
+    }
+    return null;
+  }
+  // 金額の履歴 [{from:"YYYY-MM", amount}]（古い順）。なければ今の金額が最初から
+  function histOf(s) {
+    const st = startOf(s);
+    let h = Array.isArray(s.hist) ? s.hist.filter(e => e && valid(e.from) && Number(e.amount) > 0).map(e => ({ from: e.from, amount: Math.round(Number(e.amount)) })) : [];
+    h.sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
+    const amt = Math.round(Number(s.amount)) || 0;
+    if (!h.length) return [{ from: st, amount: amt }];
+    // 履歴と今の金額が食い違う＝別の場所（表計算や古い版）で金額だけ直された → 直した月からの変更として扱う
+    if (amt > 0 && h[h.length - 1].amount !== amt) {
+      const from = ymOfTs(s.updatedAt) || ymOfTs(Date.now());
+      h = h.filter(e => e.from < from); h.push({ from, amount: amt });
+    }
+    return h;
+  }
+  function amountIn(s, m) {
+    const h = histOf(s); let a = h[0].amount;
+    for (const e of h) { if (e.from <= m) a = e.amount; else break; }
+    return a;
+  }
+  function activeIn(s, m) {
+    const e = endOf(s);
+    return startOf(s) <= m && (!e || m <= e);
+  }
+  function billedIn(s, y, m) {
+    return activeIn(s, ym(y, m)) && (s.cycle !== "year" || Number(s.month) === m);
+  }
+  // 金額を変える。from が null なら「最初から（訂正）」
+  function setAmount(s, amount, from) {
+    const st = startOf(s); amount = Math.round(Number(amount));
+    if (!from || from <= st) return [{ from: st, amount }];
+    let h = histOf(s).filter(e => e.from < from);
+    if (!h.length) h = [{ from: st, amount: histOf(s)[0].amount }];
+    if (h[h.length - 1].amount !== amount) h.push({ from, amount });
+    return h;
+  }
+  // 開始月を変えたとき、履歴の先頭をそろえる
+  function rebase(hist, start) {
+    let h = hist.slice().sort((a, b) => (a.from < b.from ? -1 : 1));
+    let first = h[0];
+    for (const e of h) if (e.from <= start) first = e;
+    h = h.filter(e => e.from > start);
+    h.unshift({ from: start, amount: first.amount });
+    return h.filter((e, i) => i === 0 || e.amount !== h[i - 1].amount);
+  }
+  const latestAmount = hist => hist[hist.length - 1].amount;
+
+  const api = { ym, ymOfTs, ymOfDate, addMonths, ymLabel, valid, startOf, endOf, histOf, amountIn, activeIn, billedIn, setAmount, rebase, latestAmount };
+  if (typeof module !== "undefined" && module.exports) module.exports = api; else root.RecurCore = api;
+})(typeof self !== "undefined" ? self : this);
+</script>
+<script>
 (function(){
 const OUT_CATS=["食費","日用品","住居","光熱費","通信","交通","保険","趣味・娯楽","ソシャゲ","Amazon","医療","交際費","その他"];
 const IN_CATS=["給与","賞与","副収入","その他"];
@@ -629,8 +745,9 @@ let txType="out";
 let store=null;
 
 /* ---------- 保存：この端末（すぐ反映）＋ Googleスプレッドシート（同期） ---------- */
-const APP_VERSION="1.0.0";
-const K={items:"kk.items",pend:"kk.pending",since:"kk.since",conf:"kk.conf",last:"kk.lastSync"};
+const APP_VERSION="1.1.0";
+const K={items:"kk.items",pend:"kk.pending",since:"kk.since",conf:"kk.conf",last:"kk.lastSync",sv:"kk.serverV"};
+const SERVER_V=2; // 同期用プログラムの版（開始月・終了月・金額の履歴に対応）
 function lsGet(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}
 function newId(){return "p"+Date.now().toString(36)+Math.random().toString(36).slice(2,8)}
@@ -653,7 +770,9 @@ function syncStore(){
     all(){return Object.values(map)},
     pendingCount(){return pend.size},
     pending(){return [...pend].map(id=>map[id]).filter(Boolean).map(r=>({...r}))},
-    applyServer(res,sent){
+    // 同期用プログラムを更新した直後：端末ごとに持っていた開始月・終了月・履歴を送り直す
+    repushRecurring(){let n=0;Object.values(map).forEach(r=>{if(r&&r.kind==="sub"&&(r.start||r.end||r.hist)){pend.add(r.id);n++}});if(n)persist();return n},
+    applyServer(res,sent,keepLocal){
       const sentAt={}; sent.forEach(r=>sentAt[r.id]=r.updatedAt);
       (res.accepted||[]).forEach(id=>{if(map[id]&&map[id].updatedAt===sentAt[id])pend.delete(id)});
       (res.rejected||[]).forEach(id=>pend.delete(id));
@@ -662,6 +781,9 @@ function syncStore(){
         const local=map[row.id];
         if(local&&pend.has(row.id)&&Number(local.updatedAt||0)>Number(row.updatedAt||0))return; // 端末の方が新しい
         const r={...row}; delete r.syncedAt;
+        // 古い同期用プログラムは開始月・終了月・履歴を運べないので、この端末の値を消さずに残す
+        // （新しい版に切り替わった最初の1回も、シートにはまだ入っていないので残す）
+        if(keepLocal&&local)["start","end","hist"].forEach(f=>{if(r[f]==null&&local[f]!=null)r[f]=local[f]});
         map[row.id]=r; pend.delete(row.id);
       });
       persist(); cb(visible());
@@ -702,8 +824,10 @@ const Sync={
     const sent=store.pending();
     try{
       const res=await callGas(c,{since:lsGet(K.since,0),changes:sent,client:APP_VERSION});
-      store.applyServer(res,sent);
+      const sv=Number(res.v||1), prevSv=Number(lsGet(K.sv,0));
+      store.applyServer(res,sent,sv<SERVER_V||prevSv<SERVER_V);
       lsSet(K.since,Math.max(0,Number(res.now||0)-5000)); lsSet(K.last,Date.now());
+      if(sv!==prevSv){lsSet(K.sv,sv);if(sv>=SERVER_V&&store.repushRecurring())this.again=true}
       this.err=null; this.set(store.pendingCount()?"pending":"ok");
     }catch(e){
       this.err=e&&e.code||"error"; this.set("error");
@@ -736,6 +860,18 @@ const Sync={
     if($("syncNowBtn"))$("syncNowBtn").disabled=!this.conf()||this.state==="syncing";
     const c=this.conf();
     if($("connOff"))$("connOff").hidden=!c;
+    // 1日以上同期できていないときは、画面の上で知らせる
+    const stale=!!c&&this.state==="error"&&(!last||Date.now()-last>864e5);
+    if($("syncAlert")){
+      $("syncAlert").hidden=!stale;
+      if(stale){
+        const days=last?Math.floor((Date.now()-last)/864e5):0, n=store?store.pendingCount():0;
+        $("syncAlertText").textContent=(last?days+"日前から同期できていません。":"まだ一度も同期できていません。")+"記録はこの端末に保存されています"+(n?"（未送信"+n+"件）":"")+"。もう1台には反映されていません。";
+      }
+    }
+    const needUpd=!!c&&Number(lsGet(K.sv,0))===1;
+    if($("updAlert"))$("updAlert").hidden=!needUpd;
+    if($("updState"))$("updState").textContent=!c?"":needUpd?"今つないでいる同期用プログラムは古い版です。":Number(lsGet(K.sv,0))>=SERVER_V?"今つないでいる同期用プログラムは最新です。":"";
   }
 };
 function setMode(t){$("mode").textContent=t}
@@ -766,7 +902,7 @@ function closeSettings(){$("settings").hidden=true;document.body.classList.remov
 let codeText="";
 async function loadCode(){
   if(codeText)return codeText;
-  try{const r=await fetch("Code.gs.txt",{cache:"no-cache"});codeText=await r.text()}catch(e){codeText=""}
+  try{const r=await fetch("Code2.gs.txt",{cache:"no-cache"});const t=await r.text();codeText=r.ok&&t.includes("SERVER_VERSION = 2")?t:""}catch(e){codeText=""}
   $("codeBox").value=codeText||"同期用プログラムを読み込めませんでした。ネットにつながっている状態で開き直してください。";
   return codeText;
 }
@@ -790,6 +926,9 @@ function setupSettings(){
   document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("settings").hidden)closeSettings()});
   $("syncNowBtn").onclick=()=>Sync.run();
   $("settings").querySelector(".steps").addEventListener("toggle",e=>{if(e.target.open)loadCode()});
+  $("copyCode2").onclick=async()=>{const t=await loadCode();if(!t){toast("読み込めませんでした。ネットにつながった状態でアプリを開き直してください");return}toast(await copyText(t,null)?"コピーしました。Apps Scriptに貼り付けてください":"コピーできませんでした。「つなぎ方」の欄から全選択してコピーしてください")};
+  $("syncAlertBtn").onclick=openSettings;
+  $("updAlertBtn").onclick=()=>{openSettings();$("updSteps").open=true;$("updSteps").scrollIntoView({block:"start"})};
   $("copyCode").onclick=async()=>{const t=await loadCode();if(!t)return;toast(await copyText(t,$("codeBox"))?"コピーしました。Apps Scriptに貼り付けてください":"下の欄を全選択してコピーしてください")};
   $("connForm").addEventListener("submit",async e=>{
     e.preventDefault();
@@ -879,64 +1018,84 @@ async function handleShared(){
 }
 
 /* ---------- dates ---------- */
+const RCR=self.RecurCore;
+const nowYm=RCR.ymOfDate(today);
 function daysIn(y,m){return new Date(y,m,0).getDate()}
 function billDate(s,y,m){
   const d=new Date(y,m-1,Math.min(s.day,daysIn(y,m)));
   if(isIncome(s)){const w=d.getDay();if(w===6)d.setDate(d.getDate()-1);else if(w===0)d.setDate(d.getDate()-2)}
   return d;
 }
+// 自動記帳は「開始月〜終了月」の間だけ、その月時点の金額で計上する（過去の月は書き換わらない）
+function billedIn(s,y,m){return RCR.billedIn(s,y,m)}
+const amtIn=(s,y,m)=>RCR.amountIn(s,RCR.ym(y,m));
+const monthlyIn=(s,k)=>{const a=RCR.amountIn(s,k);return s.cycle==="year"?a/12:a};
+const endedNow=s=>{const e=RCR.endOf(s);return !!e&&e<nowYm};
 function nextBilling(s){
-  if(s.cycle==="month"){
-    let d=billDate(s,today.getFullYear(),today.getMonth()+1);
-    if(d<today){const nm=today.getMonth()+2;d=billDate(s,today.getFullYear()+(nm>12?1:0),nm>12?1:nm)}
-    return d;
+  for(let k=0;k<=24;k++){
+    const key=RCR.addMonths(nowYm,k),y=Number(key.slice(0,4)),m=Number(key.slice(5,7));
+    if(!billedIn(s,y,m))continue;
+    const d=billDate(s,y,m); if(d>=today)return d;
   }
-  let d=billDate(s,today.getFullYear(),s.month);
-  if(d<today)d=billDate(s,today.getFullYear()+1,s.month);
-  return d;
+  return null;
 }
-function billedIn(s,y,m){return s.active!==false&&(s.cycle==="month"||s.month===m)}
-const monthly=s=>s.cycle==="year"?s.amount/12:s.amount;
 
 /* ---------- render ---------- */
 function render(){
-  const {y,m}=view; const key=y+"-"+pad(m);
+  const {y,m}=view; const key=RCR.ym(y,m);
   $("monthLabel").textContent=y+"年 "+m+"月";
+  const todayIso=iso(today);
+  const mode=key<nowYm?"past":key>nowYm?"future":"current";
   const txs=items.filter(x=>x.kind==="tx"&&String(x.date).startsWith(key)).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.created||0)-(b.created||0));
   const subs=items.filter(x=>x.kind==="sub");
   const billed=subs.filter(s=>billedIn(s,y,m));
+  // この月の全部の行（手で記帳した分＋自動記帳）。日付が今日より先のものは「予定」
+  const rows=[...txs.map(t=>({t,date:t.date,type:t.type,amount:t.amount,cat:t.cat})),
+    ...billed.map(s=>({s,date:iso(billDate(s,y,m)),type:isIncome(s)?"in":"out",amount:amtIn(s,y,m),cat:isSub(s)?"サブスク":s.cat}))]
+    .sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  rows.forEach(r=>{r.plan=r.date>todayIso});
+  const sum=f=>rows.filter(f).reduce((a,r)=>a+r.amount,0);
+  const tot={in:sum(r=>r.type==="in"),out:sum(r=>r.type==="out")};
+  const act={in:sum(r=>r.type==="in"&&!r.plan),out:sum(r=>r.type==="out"&&!r.plan)};
+  // 今月で、まだ来ていない予定があるときだけ「今日までの実績」と「月末見込み」を分ける
+  const split=mode==="current"&&(tot.in!==act.in||tot.out!==act.out);
+  const counted=r=>!split||!r.plan;
+  const main=split?act:tot;
+  const suffix=split?"（今日まで）":mode==="future"?"（予定）":"";
+  $("kIn").textContent="収入"+suffix; $("kOut").textContent="支出"+suffix; $("kBal").textContent="収支"+suffix;
+  const signed=n=>(n<0?"−":"")+yen(Math.abs(n));
 
-  const incAuto=billed.filter(isIncome).reduce((a,s)=>a+s.amount,0);
-  const inSum=txs.filter(t=>t.type==="in").reduce((a,t)=>a+t.amount,0)+incAuto;
-  const outTx=txs.filter(t=>t.type==="out").reduce((a,t)=>a+t.amount,0);
-  const fixedSum=billed.filter(isFixed).reduce((a,s)=>a+s.amount,0);
-  const subSum=billed.filter(isSub).reduce((a,s)=>a+s.amount,0);
-  $("sInSub").textContent=incAuto?"うち自動 "+yen(incAuto):"\u00a0";
-  const outSum=outTx+fixedSum+subSum;
-  const bal=inSum-outSum;
-  $("sIn").textContent=yen(inSum);
-  $("sOut").textContent=yen(outSum);
-  $("sOutSub").textContent=[fixedSum?"固定費 "+yen(fixedSum):"",subSum?"サブスク "+yen(subSum):""].filter(Boolean).join("・")||"\u00a0";
-  $("sBal").textContent=(bal<0?"−":"")+yen(Math.abs(bal));
+  const incAuto=sum(r=>r.s&&r.type==="in"&&counted(r));
+  const fixedSum=sum(r=>r.s&&isFixed(r.s)&&counted(r));
+  const subSum=sum(r=>r.s&&isSub(r.s)&&counted(r));
+  $("sIn").textContent=yen(main.in);
+  $("sInSub").textContent=incAuto?"うち自動 "+yen(incAuto):" ";
+  $("sInPlan").hidden=!split; $("sInPlan").textContent="月末見込み "+yen(tot.in);
+  $("sOut").textContent=yen(main.out);
+  $("sOutSub").textContent=[fixedSum?"固定費 "+yen(fixedSum):"",subSum?"サブスク "+yen(subSum):""].filter(Boolean).join("・")||" ";
+  $("sOutPlan").hidden=!split; $("sOutPlan").textContent="月末見込み "+yen(tot.out);
+  const bal=main.in-main.out;
+  $("sBal").textContent=signed(bal);
   $("sBal").className="v "+(bal<0?"neg":"pos");
-  $("sBalSub").textContent=inSum?"収入の "+Math.round(outSum/inSum*100)+"% を使用":" ";
-  const active=subs.filter(s=>s.active!==false&&isSub(s));
-  const perMonth=active.reduce((a,s)=>a+monthly(s),0);
-  $("sSubs").textContent=yen(perMonth);
-  $("sSubsSub").textContent=active.length?active.length+"件 契約中":" ";
+  $("sBalSub").textContent=main.in?"収入の "+Math.round(main.out/main.in*100)+"% を使用":" ";
+  $("sBalPlan").hidden=!split; $("sBalPlan").textContent="月末見込み "+signed(tot.in-tot.out);
+  // サブスク（月あたり）：表示している月に契約中のもの
+  const subsOn=subs.filter(s=>isSub(s)&&RCR.activeIn(s,key));
+  $("sSubs").textContent=yen(subsOn.reduce((a,s)=>a+monthlyIn(s,key),0));
+  $("sSubsSub").textContent=subsOn.length?subsOn.length+"件 契約中":" ";
 
-  renderBook(txs,billed,y,m);
+  renderBook(rows,txs.length);
   renderSubs(subs);
-  renderBars(txs,billed,outSum);
+  $("barsNote").textContent=split?"支出のみ・今日まで":mode==="future"?"支出のみ・予定":"支出のみ";
+  renderBars(rows.filter(r=>r.type==="out"&&counted(r)));
   renderSampleBar();
 }
 
 function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
 
-function renderBook(txs,billed,y,m){
+function renderBook(rows,txCount){
   const box=$("book"); box.replaceChildren();
-  $("txCount").textContent=txs.length?txs.length+"件":"";
-  const rows=[...txs.map(t=>({t,date:t.date})),...billed.map(s=>({s,date:iso(billDate(s,y,m))}))].sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  $("txCount").textContent=txCount?txCount+"件":"";
   if(!rows.length){
     const e=el("div","empty");
     e.append(el("div",null,"この月の記録はまだありません。上のフォームから最初の1件を記帳しましょう。"));
@@ -956,8 +1115,10 @@ function renderBook(txs,billed,y,m){
       tr.replaceChildren(); tr.className="editing";
       const td=el("td"); td.colSpan=5; td.append(txEditForm()); tr.append(td);
     }else if(r.t){
+      if(r.plan)tr.className="plan";
       memo.append(el("span","cat",r.t.cat),document.createTextNode(r.t.memo||""));
       if(r.t.sample)memo.append(el("span","tag","サンプル"));
+      if(r.plan)memo.append(el("span","tag","予定"));
       tr.append(memo);
       tr.append(el("td","amt num neg",r.t.type==="out"?yen(r.t.amount):""));
       tr.append(el("td","amt num pos",r.t.type==="in"?yen(r.t.amount):""));
@@ -967,13 +1128,14 @@ function renderBook(txs,billed,y,m){
       ed.onclick=()=>{editingTx={id:t.id,type:t.type,date:t.date,amount:t.amount,cat:t.cat,memo:t.memo||""};render()};
       td.append(ed,delBtn(t.id)); tr.append(td);
     }else{
-      tr.className="auto";
+      tr.className="auto"+(r.plan?" plan":"");
       if(isIncome(r.s))memo.append(el("span","cat inc",r.s.cat),document.createTextNode(r.s.name+"（自動）"));
       else if(isFixed(r.s))memo.append(el("span","cat",r.s.cat),document.createTextNode(r.s.name+"（固定費・自動）"));
       else memo.append(el("span","cat subs","サブスク"),document.createTextNode(r.s.name+"（自動）"));
+      if(r.plan)memo.append(el("span","tag","予定"));
       tr.append(memo);
-      tr.append(el("td","amt num",isIncome(r.s)?"":yen(r.s.amount)));
-      tr.append(el("td","amt num",isIncome(r.s)?yen(r.s.amount):""));
+      tr.append(el("td","amt num",r.type==="in"?"":yen(r.amount)));
+      tr.append(el("td","amt num",r.type==="in"?yen(r.amount):""));
       tr.append(el("td",""));
     }
     tb.append(tr);
@@ -981,12 +1143,12 @@ function renderBook(txs,billed,y,m){
   tbl.append(tb); box.append(tbl);
 }
 
-function delBtn(id,label){
+function delBtn(id,label,armedText){
   const b=el("button","btn ghost",label||"削除");
   b.setAttribute("aria-label","削除");
   let armed=false,timer;
   b.onclick=async()=>{
-    if(!armed){armed=true;b.textContent="本当に削除";b.classList.add("danger");timer=setTimeout(()=>{armed=false;b.textContent=label||"削除";b.classList.remove("danger")},3000);return}
+    if(!armed){armed=true;b.textContent=armedText||"本当に削除";b.classList.add("danger");timer=setTimeout(()=>{armed=false;b.textContent=label||"削除";b.classList.remove("danger")},4000);return}
     clearTimeout(timer);
     try{await store.remove(id);toast("削除しました")}catch(e){toast("削除できませんでした。もう一度お試しください")}
   };
@@ -999,39 +1161,66 @@ function renderSubs(subs){
   if(!subs.length){box.append(el("div","empty","まだ何も登録されていません。給料のような毎月の収入、家賃のような固定費、動画・音楽などのサブスクを下の「追加」から登録すると、毎月自動で記帳されます。"));return}
   [["income","収入"],["fixed","固定費"],["sub","サブスク"]].forEach(([g,label])=>{
     const list=subs.filter(s=>groupOf(s)===g); if(!list.length)return;
-    const act=list.filter(s=>s.active!==false);
-    const pm=act.reduce((a,s)=>a+monthly(s),0);
+    const pm=list.filter(s=>RCR.activeIn(s,nowYm)).reduce((a,s)=>a+monthlyIn(s,nowYm),0);
     const h=el("div","grouphead"); h.append(el("span","gname",label),el("span","num gsum","月 "+yen(pm)+"・年 "+yen(pm*12)));
     box.append(h);
     renderSubGroup(box,list);
   });
 }
+async function stopSub(s){
+  // 今月分がもう引き落とされていれば今月まで、まだなら先月までで終わりにする（それまでの記録は残る）
+  const ty=today.getFullYear(),tm=today.getMonth()+1;
+  const done=billedIn(s,ty,tm)&&billDate(s,ty,tm)<=today;
+  const end=done?nowYm:RCR.addMonths(nowYm,-1);
+  try{await store.update(s.id,{end,active:false});toast(RCR.ymLabel(end)+"分までで停止しました。それまでの記録は残ります")}catch(e){toast("変更できませんでした")}
+}
+async function resumeSub(s){
+  const e=RCR.endOf(s);
+  try{
+    if(!e||e>=RCR.addMonths(nowYm,-1)){ // 間が空いていない：そのまま続ける
+      await store.update(s.id,{end:null,active:true}); toast("再開しました");
+    }else{ // 間が空いている：止めていた月には計上しないよう、今月からの新しい登録にする
+      const amount=RCR.latestAmount(RCR.histOf(s));
+      await store.add({kind:"sub",group:groupOf(s),name:s.name,amount,cycle:s.cycle,day:s.day,month:s.cycle==="year"?s.month:null,cat:s.cat,note:s.note||"",active:true,start:nowYm,hist:[{from:nowYm,amount}],created:Date.now()});
+      toast("今月から再開しました。止めていた月には計上されません");
+    }
+  }catch(x){toast("変更できませんでした")}
+}
 function renderSubGroup(box,list){
-  list.map(s=>({s,next:nextBilling(s)}))
-    .sort((a,b)=>(b.s.active!==false)-(a.s.active!==false)||a.next-b.next)
-    .forEach(({s,next})=>{
-      const it=el("div","sub-item"+(s.active===false?" paused":""));
+  list.map(s=>({s,next:nextBilling(s),ended:endedNow(s)}))
+    .sort((a,b)=>(a.ended-b.ended)||((a.next?a.next.getTime():9e15)-(b.next?b.next.getTime():9e15)))
+    .forEach(({s,next,ended})=>{
+      const it=el("div","sub-item"+(ended?" paused":""));
       const nm=el("div","name",s.name); if(s.sample)nm.append(el("span","tag","サンプル"));
       it.append(nm);
-      it.append(el("div","price num",yen(s.amount)+(s.cycle==="year"?"/年":"/月")));
+      const start=RCR.startOf(s),end=RCR.endOf(s),hist=RCR.histOf(s);
+      const cur=RCR.amountIn(s,ended&&end?end:nowYm<start?start:nowYm);
+      it.append(el("div","price num",yen(cur)+(s.cycle==="year"?"/年":"/月")));
       const meta=el("div","meta");
       meta.append(el("span",isIncome(s)?"cat inc":isFixed(s)?"cat":"cat subs",s.cat));
-      if(s.active===false){meta.append(el("span",null,"停止中"))}
+      if(ended){meta.append(el("span",null,RCR.ymLabel(end)+"分で終了"))}
       else{
-        const days=Math.round((next-today)/864e5);
-        meta.append(el("span","num","次回 "+(next.getMonth()+1)+"/"+next.getDate()));
-        if(days<=7)meta.append(el("span","due",days===0?"今日":"あと"+days+"日"));
-        if(s.cycle==="year")meta.append(el("span","num","月あたり "+yen(s.amount/12)));
+        if(start>nowYm)meta.append(el("span",null,RCR.ymLabel(start)+"から"));
+        if(next){
+          const days=Math.round((next-today)/864e5);
+          meta.append(el("span","num","次回 "+(next.getMonth()+1)+"/"+next.getDate()));
+          if(days<=7)meta.append(el("span","due",days===0?"今日":"あと"+days+"日"));
+        }
+        if(end)meta.append(el("span",null,RCR.ymLabel(end)+"分まで"));
+        const up=hist.find(e=>e.from>nowYm&&e.from>start);
+        if(up)meta.append(el("span","num",RCR.ymLabel(up.from)+"から "+yen(up.amount)));
+        if(s.cycle==="year")meta.append(el("span","num","月あたり "+yen(cur/12)));
       }
       it.append(meta);
       if(editing&&editing.id===s.id){it.append(editForm());box.append(it);return}
       const acts=el("div","acts");
       const ed=el("button","btn ghost","編集");
-      ed.onclick=()=>{editing={id:s.id,group:groupOf(s),note:s.note||"",name:s.name,amount:s.amount,cycle:s.cycle,month:s.month||today.getMonth()+1,day:s.day,cat:s.cat};render()};
+      const latest=RCR.latestAmount(hist);
+      ed.onclick=()=>{editing={id:s.id,group:groupOf(s),note:s.note||"",name:s.name,amount:latest,orig:latest,from:nowYm<start?"first":nowYm,start,end:end||"",cycle:s.cycle,month:s.month||today.getMonth()+1,day:s.day,cat:s.cat};render()};
       acts.append(ed);
-      const tg=el("button","btn ghost",s.active===false?"再開":"停止");
-      tg.onclick=async()=>{try{await store.update(s.id,{active:s.active===false});toast(s.active===false?"再開しました":"停止しました。支出に計上されなくなります")}catch(e){toast("変更できませんでした")}};
-      acts.append(tg,delBtn(s.id));
+      const tg=el("button","btn ghost",end?"再開":"停止");
+      tg.onclick=()=>end?resumeSub(s):stopSub(s);
+      acts.append(tg,delBtn(s.id,null,"本当に削除（過去の月からも消えます）"));
       it.append(acts);
       if(s.note)it.append(el("div","note",s.note));
       box.append(it);
@@ -1355,57 +1544,82 @@ function txEditForm(){
   return f;
 }
 
-let editing=null; // 編集中のサブスク（入力途中の値を保持）
+let editing=null; // 編集中の自動記帳（入力途中の値を保持）
 function field(lbl,ctrl){const l=el("label",null,lbl);l.append(ctrl);return l}
 function sel(list,val,onch){const s=el("select");list.forEach(([v,t])=>{const o=el("option",null,t);o.value=v;s.append(o)});s.value=String(val);s.onchange=()=>onch(s.value);return s}
+function monthInput(id,val,onch){const i=el("input");i.type="month";i.id=id;i.value=val||"";i.placeholder="2026-11";i.pattern="\\d{4}-(0[1-9]|1[0-2])";i.oninput=()=>onch(i.value.trim());return i}
 function editForm(){
   const f=el("form","editform"); f.style.gridColumn="1/-1"; f.autocomplete="off";
   const nm=el("input"); nm.type="text"; nm.maxLength=40; nm.value=editing.name; nm.id="edName"; nm.oninput=()=>editing.name=nm.value;
-  const am=el("input"); am.type="number"; am.min="1"; am.step="1"; am.inputMode="numeric"; am.value=editing.amount; am.id="edAmount"; am.oninput=()=>editing.amount=am.value;
+  const am=el("input"); am.type="number"; am.min="1"; am.step="1"; am.inputMode="numeric"; am.value=editing.amount; am.id="edAmount";
   const g=sel([["income","収入"],["fixed","固定費"],["sub","サブスク"]],editing.group,v=>{editing.group=v;if(!catsFor(v).includes(editing.cat))editing.cat=catsFor(v)[0];render()});
   const r1=el("div","row");
   r1.append(field("区分",g),field("金額（円）",am),field("支払いサイクル",sel([["month","毎月"],["year","毎年"]],editing.cycle,v=>{editing.cycle=v;render()})));
+  // 金額を変えたときだけ「いつから」を聞く（過去の月の金額を書き換えないため）
+  const fromOpts=[]; const lo=RCR.addMonths(nowYm,-12);
+  [0,1,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12].forEach(k=>{const mm=RCR.addMonths(nowYm,k);if(mm<=editing.start||mm<lo)return;fromOpts.push([mm,(k===0?"今月（":k===1?"来月（":k===-1?"先月（":"")+RCR.ymLabel(mm)+(k>=-1&&k<=1?"）":"")+"から"])});
+  fromOpts.push(["first","最初から（入力ミスの訂正）"]);
+  if(!fromOpts.some(o=>o[0]===editing.from))editing.from="first";
+  const fromSel=sel(fromOpts,editing.from,v=>editing.from=v); fromSel.id="edFrom";
+  const fromRow=el("div","row amtfrom"); fromRow.append(field("新しい金額にするのは",fromSel));
+  const fromHint=el("div","small muted","選んだ月より前の記録は、今までの金額のまま残ります。");
+  const showFrom=()=>{const ch=Math.round(Number(editing.amount))!==editing.orig;fromRow.hidden=!ch;fromHint.hidden=!ch};
+  am.oninput=()=>{editing.amount=am.value;showFrom()}; showFrom();
   const r2=el("div","row");
   if(editing.cycle==="year")r2.append(field("引き落とし月",sel(Array.from({length:12},(_,i)=>[i+1,(i+1)+"月"]),editing.month,v=>editing.month=Number(v))));
   r2.append(field(dayLabel(editing.group),sel(Array.from({length:31},(_,i)=>[i+1,(i+1)+"日"]),editing.day,v=>editing.day=Number(v))));
   r2.append(field(catLabel(editing.group),sel(catsFor(editing.group).map(c=>[c,c]),editing.cat,v=>editing.cat=v)));
+  const r3=el("div","row");
+  r3.append(field("開始月（この月から計上）",monthInput("edStart",editing.start,v=>editing.start=v)),field("終了月（空なら継続中）",monthInput("edEnd",editing.end,v=>editing.end=v)));
   const err=el("div","formerr");
   const bt=el("div","row"); bt.style.justifyContent="flex-end";
   const cancel=el("button","btn","キャンセル"); cancel.type="button"; cancel.style.flex="0 0 auto"; cancel.onclick=()=>{editing=null;render()};
   const save=el("button","btn primary","保存する"); save.type="submit"; save.style.flex="0 0 auto";
   bt.append(cancel,save);
   const nt=el("input"); nt.type="text"; nt.maxLength=80; nt.value=editing.note; nt.id="edNote"; nt.placeholder="例：家族で共有、年末に解約を検討"; nt.oninput=()=>editing.note=nt.value;
-  f.append(field(nameLabel(editing.group),nm),r1,r2,field("メモ（任意）",nt),err,bt);
+  f.append(field(nameLabel(editing.group),nm),r1,fromRow,fromHint,r2,r3,field("メモ（任意）",nt),err,bt);
+  f.noValidate=true;
   f.onsubmit=async e=>{
     e.preventDefault();
     const name=String(editing.name).trim(), amount=Math.round(Number(editing.amount));
-    if(!name){err.textContent="サービス名を入れてください";return}
+    if(!name){err.textContent="名前を入れてください";return}
     if(!(amount>0)){err.textContent="金額は1円以上の数字で入れてください";return}
-    const id=editing.id;
+    const start=editing.start, end=editing.end||null;
+    if(!RCR.valid(start)){err.textContent="開始月を「2026-11」の形で入れてください";return}
+    if(end&&!RCR.valid(end)){err.textContent="終了月は「2026-11」の形で入れるか、空にしてください";return}
+    if(end&&end<start){err.textContent="終了月は開始月と同じか、それより後にしてください";return}
+    const id=editing.id, s0=store.get(id);
+    if(!s0){editing=null;render();return}
+    const patch={group:editing.group,name,cycle:editing.cycle,month:editing.cycle==="year"?editing.month:null,day:editing.day,cat:editing.cat,note:String(editing.note).trim()};
+    // 金額・開始月・終了月を触ったときだけ、期間と履歴を書き込む（名前やメモだけの修正で、もう1台の履歴を上書きしないため）
+    const periodChanged=amount!==editing.orig||start!==RCR.startOf(s0)||(end||null)!==(RCR.endOf(s0)||null);
+    if(periodChanged||s0.hist!=null){
+      let hist=RCR.histOf(s0);
+      if(amount!==editing.orig)hist=RCR.setAmount(s0,amount,editing.from==="first"?null:editing.from);
+      hist=RCR.rebase(hist,start);
+      Object.assign(patch,{amount:RCR.latestAmount(hist),hist,start,end,active:!(end&&end<nowYm)});
+    }
     try{
-      await store.update(id,{group:editing.group,name,amount,cycle:editing.cycle,month:editing.cycle==="year"?editing.month:null,day:editing.day,cat:editing.cat,note:String(editing.note).trim()});
+      await store.update(id,patch);
       editing=null; render(); toast("保存しました");
     }catch(x){err.textContent="保存できませんでした。もう一度お試しください"}
   };
   return f;
 }
 
-function renderBars(txs,billed,outSum){
+function renderBars(outRows){
   const box=$("bars"); box.replaceChildren();
   const by={};
-  txs.filter(t=>t.type==="out").forEach(t=>by[t.cat]=(by[t.cat]||0)+t.amount);
-  billed.filter(isFixed).forEach(s=>by[s.cat]=(by[s.cat]||0)+s.amount);
-  const subSum=billed.filter(isSub).reduce((a,s)=>a+s.amount,0);
-  if(subSum)by["サブスク"]=subSum;
+  outRows.forEach(r=>{by[r.cat]=(by[r.cat]||0)+r.amount});
   const list=Object.entries(by).sort((a,b)=>b[1]-a[1]);
   if(!list.length){box.append(el("div","muted small","支出を記帳すると、カテゴリごとの割合がここに表示されます。"));return}
-  const max=list[0][1];
+  const max=list[0][1], total=list.reduce((a,x)=>a+x[1],0);
   list.forEach(([c,v])=>{
     const r=el("div","bar");
     r.append(el("span",null,c));
     const tr=el("div","track"),f=el("div","fill"+(c==="サブスク"?" subs":""));
     f.style.width=(v/max*100)+"%"; tr.append(f); r.append(tr);
-    r.append(el("span","amt num",yen(v)+" "+Math.round(v/outSum*100)+"%"));
+    r.append(el("span","amt num",yen(v)+" "+Math.round(v/total*100)+"%"));
     box.append(r);
   });
 }
@@ -1427,6 +1641,7 @@ function fillSelects(){
   $("subDay").replaceChildren(...Array.from({length:31},(_,i)=>{const o=el("option",null,(i+1)+"日");o.value=i+1;return o}));
   $("subMonth").replaceChildren(...Array.from({length:12},(_,i)=>{const o=el("option",null,(i+1)+"月");o.value=i+1;return o}));
   $("subDay").value=String(today.getDate()); $("subMonth").value=String(today.getMonth()+1);
+  $("subStart").value=nowYm;
 }
 function setType(t){
   txType=t;
@@ -1476,10 +1691,13 @@ $("subForm").addEventListener("submit",async e=>{
   $("subErr").textContent="";
   if(!store)return;
   const cycle=$("subCycle").value;
+  const start=$("subStart").value.trim()||nowYm;
+  if(!RCR.valid(start)){$("subErr").textContent="開始月を「2026-11」の形で入れてください";return}
   try{
-    await store.add({kind:"sub",group:subGroup,name,amount,cycle,day:Number($("subDay").value),month:cycle==="year"?Number($("subMonth").value):null,cat:$("subCat").value,note:$("subNote").value.trim(),active:true,created:Date.now()});
+    await store.add({kind:"sub",group:subGroup,name,amount,start,hist:[{from:start,amount}],cycle,day:Number($("subDay").value),month:cycle==="year"?Number($("subMonth").value):null,cat:$("subCat").value,note:$("subNote").value.trim(),active:true,created:Date.now()});
     $("subName").value=""; $("subAmount").value=""; $("subNote").value=""; $("presetNote").hidden=true;
-    toast("サブスクを追加しました");
+    $("subStart").value=nowYm;
+    toast(start>nowYm?RCR.ymLabel(start)+"から計上します":"追加しました");
   }catch(err){$("subErr").textContent="保存できませんでした。もう一度お試しください"}
 });
 
